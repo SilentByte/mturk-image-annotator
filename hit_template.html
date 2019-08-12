@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>gttc2</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css">
+    <style>
+/*
+ * Annotator Tool Stylesheet
+ */
+
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.wrapper {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    width: 100%;
+}
+
+.wrapper > .left {
+    width: 200px;
+}
+
+.wrapper > .right {
+    flex: 1;
+    width: 100%;
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA6QDpAPm+1b9GAAAACXBIWXMAAC4jAAAuIwF4pT92AAAAB3RJTUUH4gsYCh0N+W/LPwAAABl0RVh0Q29tbWVudABDcmVhdGVkIHdpdGggR0lNUFeBDhcAAAArSURBVDjLYzxz5sx/Bjzg7t27+KQZmBgoBKMGDAYDWAjFs7Ky8mggDn8DADaQCRxJlUJ8AAAAAElFTkSuQmCC');
+}
+
+nav {
+    margin: 0;
+    padding: 0;
+}
+
+button {
+    font-weight: bold !important;
+    text-transform: uppercase;
+    border-radius: 0 !important;
+}
+
+#submit {
+    margin-top: 2em;
+}
+
+.modal-title {
+    text-transform: uppercase;
+}</style>
+    <script>
+        var config = {
+            imageUrl: 'https://s3.amazonaws.com/gttc2/mturk/images/47f439ef-f6cf-48a3-a154-a9d86e7f0cae.jpg',
+        };
+    </script>
+    <script src="https://s3.amazonaws.com/mturk-public/externalHIT_v1.js"></script>
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/2.4.3/fabric.js"></script>
+</head>
+<body>
+    <main class="wrapper">
+        <nav class="left">
+            <form id="mturk_form" name="mturk_form" method="post" action="https://www.google.com">
+                <input id="assignmentId" name="assignmentId" type="hidden" value="">
+                <input id="annotations" name="annotations" type="hidden" value="">
+
+                <button id="instructions"
+                        type="button"
+                        class="btn btn-success btn-lg btn-block"
+                        data-toggle="modal"
+                        data-target="#modal">
+                    Instructions
+                </button>
+
+                <button id="reset-view" type="button" class="btn btn-warning btn-lg btn-block">Reset View</button>
+                <button id="clear-tags" type="button" class="btn btn-warning btn-lg btn-block">Clear Tags</button>
+                <button id="submit-hit" type="button" class="btn btn-danger btn-lg btn-block">Submit HIT</button>
+            </form>
+        </nav>
+        <section class="right">
+            <canvas id="canvas"></canvas>
+        </section>
+    </main>
+    <div id="modal" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="modal" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Instructions</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <h5>Task</h5>
+                <ul>
+                    <li>
+                        Identify all decimal values on the photograph that may indicate a <b>depth, distance, or
+                        length</b>. <br>
+                        <b>DO NOT TAG</b> dates, times, and numbers mixed with letters.
+                    </li>
+                    <li>Numbers may be located:</li>
+                    <ul>
+                        <li>On the tray</li>
+                        <li>On the rock itself</li>
+                        <li>On blocks between rocks</li>
+                    </ul>
+
+                    <li>
+                        <a href="https://s3.amazonaws.com/gttc2/mturk/resources/samples.html"
+                           target="_blank">
+                            Click here to view samples!
+                        </a>
+                    </li>
+                </ul>
+
+                <h5>Steps</h5>
+                <ol>
+                    <li>Identify an acceptable decimal value.</li>
+                    <li>Move the mouse cursor to the center of the number.</li>
+                    <li>Double-click with the left mouse button.</li>
+                    <li>
+                        Enter the decimal value <b>INCLUDING</b> trailing zeroes. <br>
+                        For example, if the number reads 38.20, enter 38.20 and <b>not</b> 38.2.
+                    </li>
+                    <li>Repeat for all acceptable numbers on the photograph.</li>
+                </ol>
+
+                <p>
+                    <i> Only click "SUBMIT HIT" once <b>all</b> acceptable numbers have been marked. </i>
+                </p>
+
+                <hr>
+
+                <h5>Navigation</h5>
+                <ul>
+                    <li>Click-and-hold while moving the mouse to pan/scroll the photograph.</li>
+                    <li>Use the mouse wheel to zoom-in and zoom-out</li>
+                    <li>Double-click with the left mouse button to tag a number.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+    <script>
+/**
+ * Bounding Box Annotation Tool.
+ */
+
+var MENU_WIDTH = 200;
+var ZOOM_STEP = 0.2;
+var CIRCLE_RADIUS = 20;
+
+var currentZoomLevel = -0.5;
+var moveOrigin = null;
+
+var imageObject = null;
+var tags = [];
+
+var canvas = new fabric.Canvas('canvas', {
+    width: window.innerWidth - MENU_WIDTH,
+    height: window.innerHeight,
+    selection: false,
+});
+
+fabric.Image.fromURL(config.imageUrl, function(image) {
+    var scale = canvas.width / image.width;
+    image.set({
+        hasControls: false,
+        hasRotatingPoint: false,
+        hasBorders: false,
+        selectable: false,
+        evented: false,
+        scaleX: scale,
+        scaleY: scale,
+    });
+
+    imageObject = image;
+    canvas.add(image);
+});
+
+canvas.on('mouse:down', function(options) {
+    moveOrigin = canvas.getPointer(options.e, true);
+});
+
+canvas.on('mouse:up', function() {
+    moveOrigin = null;
+});
+
+canvas.on('mouse:move', function(options) {
+    if(!moveOrigin) {
+        return;
+    }
+
+    var pointer = canvas.getPointer(options.e, true);
+    canvas.relativePan(new fabric.Point(pointer.x - moveOrigin.x, pointer.y - moveOrigin.y));
+    moveOrigin = pointer;
+});
+
+canvas.on('mouse:dblclick', function(options) {
+    var pointer = canvas.getPointer(options.e, false);
+
+    var value = prompt('Enter decimal value.');
+    if(value === null || value.trim() === '') {
+        return;
+    }
+
+    value = value.trim();
+    var circle = new fabric.Circle({
+        hasControls: false,
+        hasRotatingPoint: false,
+        hasBorders: false,
+        selectable: false,
+        evented: false,
+        left: pointer.x - CIRCLE_RADIUS,
+        top: pointer.y - CIRCLE_RADIUS,
+        radius: CIRCLE_RADIUS,
+        fill: 'rgba(255,0,0,0.5)',
+    });
+
+    canvas.add(circle);
+    tags.push({
+        object: circle,
+        value: value,
+    });
+});
+
+$('main').on('mousewheel', function(options) {
+    var delta = options.originalEvent.wheelDelta;
+    if(delta === 0) {
+        return;
+    }
+
+    var pointer = canvas.getPointer(options.e, true);
+    var point = new fabric.Point(pointer.x, pointer.y);
+
+    if(delta > 0) {
+        currentZoomLevel += ZOOM_STEP;
+    } else {
+        currentZoomLevel -= ZOOM_STEP;
+    }
+
+    canvas.zoomToPoint(point, Math.pow(2, currentZoomLevel));
+});
+
+$(window).resize(function() {
+    canvas.setWidth(window.innerWidth - MENU_WIDTH);
+    canvas.setHeight(window.innerHeight);
+});
+
+$(document).ready(function() {
+    canvas.zoomToPoint(new fabric.Point(0, 0), Math.pow(2, currentZoomLevel));
+});
+
+$('#reset-view').on('click', function() {
+    currentZoomLevel = 0.0;
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+});
+
+$('#clear-tags').on('click', function() {
+    tags.forEach(function(t) {
+        canvas.remove(t.object);
+    });
+
+    tags = [];
+});
+
+$('#submit-hit').on('click', function() {
+    var url = turkGetSubmitToHost();
+    var id = turkGetParam('assignmentId', '');
+
+    var annotations = JSON.stringify(tags.map(function(t) {
+        return {
+            x: t.object.left + CIRCLE_RADIUS,
+            y: t.object.top + CIRCLE_RADIUS,
+            value: t.value,
+        };
+    }));
+
+    alert(url);
+    alert(id);
+    alert(annotations);
+
+    document.getElementById('assignmentId').value = id;
+    document.getElementById('annotations').value = annotations;
+
+    var form = $('#mturk_form');
+
+    form.attr('action', url + '/mturk/externalSubmit');
+    form.submit();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+.idea/
+.vscode/
+venv/
+
+core_images/
+core_images.json
+
